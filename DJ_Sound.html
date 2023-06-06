@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>DJ Sound</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="styles.css">
+  <style>
+  </style>
+</head>
+
+<body>
+  <h1>DJ Sound</h1>
+
+  <input type="file" id="fileInput" accept="audio/*" multiple>
+
+  <!-- <div id="gridContainer" class="scrollable-grid"> -->
+  <div class="scrollable-grid">
+    <div class="grid">
+      <!-- I bottoni vengono generati dinamicamente tramite JavaScript -->
+    </div>
+  </div>
+
+  <div id="audioVisualizer">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="timeline">
+    <canvas id="timelineCanvas"></canvas>
+    <div id="cursor"></div>
+  </div>
+
+  <script>
+    // Gestisci l'evento di cambio del menu di selezione dei file
+    $('#fileInput').on('change', function (e) {
+      var files = e.target.files;
+      createButtons(files);
+    });
+
+    // Crea i bottoni in base ai file audio selezionati
+    function createButtons(files) {
+      var grid = $('.grid');
+      grid.empty();
+
+      for (var i = 0; i < files.length; i++) {
+        var button = $('<button></button>');
+        button.text(files[i].name.replace('.mp3', ''));
+        button.data('sound', URL.createObjectURL(files[i]));
+        button.mouseup(stopSound);
+        button.focusout(stopSound);
+        button.on('mousedown', function (e) {
+          if (e.button === 2) {
+            e.preventDefault();
+            return false;
+          }
+          playSound.call(this);
+        });
+        button.on('contextmenu', function (e) {
+          e.preventDefault();
+        });
+        grid.append(button);
+      }
+    }
+
+
+    // Riproduci il suono quando il pulsante viene tenuto premuto
+    function playSound() {
+      var sound = new Audio($(this).data('sound'));
+      sound.loop = false;
+      sound.play();
+      $(this).data('soundObj', sound);
+      $(this).addClass('button-playing');
+
+      visualizeAudio(sound);
+    }
+
+    // Interrompi la riproduzione del suono quando il pulsante viene rilasciato
+    function stopSound() {
+      var sound = $(this).data('soundObj');
+      if (sound) {
+        sound.pause();
+        sound.currentTime = 0;
+        $(this).removeClass('button-playing');
+      }
+    }
+
+    // Gestisci l'evento di movimento del mouse sul pulsante
+    $('.grid').on('mousemove', 'button', function (e) {
+      if (e.buttons === 0) {
+        stopSound.call(this);
+      }
+    });
+
+    // Attiva/disattiva il loop del suono con un doppio click sul pulsante
+    function toggleLoop() {
+      var sound = $(this).data('soundObj');
+      var loop = !sound.loop;
+      sound.loop = loop;
+      $(this).data('loop', loop);
+
+      visualizeAudio(sound);
+    }
+
+
+    // Visualizza l'audio e lo spettro in frequenza
+    function visualizeAudio(sound) {
+      var context = new AudioContext();
+      var source = context.createMediaElementSource(sound);
+      var analyser = context.createAnalyser();
+      var canvas = document.getElementById('canvas');
+      var ctx = canvas.getContext('2d');
+
+      source.connect(analyser);
+      analyser.connect(context.destination);
+
+      analyser.fftSize = 2048;
+      var bufferLength = analyser.frequencyBinCount;
+      var dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        var WIDTH = window.innerWidth;
+        var HEIGHT = canvas.height;
+
+        canvas.width = WIDTH;
+
+        requestAnimationFrame(draw);
+
+        analyser.getByteTimeDomainData(dataArray);
+
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'white';
+
+        ctx.beginPath();
+
+        var sliceWidth = WIDTH * 1.0 / bufferLength;
+        var x = 0;
+
+        for (var i = 0; i < bufferLength; i++) {
+          var v = dataArray[i] / 128.0;
+          var y = v * HEIGHT / 2;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+      }
+
+      draw();
+
+      // TimeLine 
+      var timelineCanvas = document.getElementById('timelineCanvas');
+      var timelineCtx = timelineCanvas.getContext('2d');
+      var cursor = document.getElementById('cursor');
+
+      function drawTimeline() {
+        var duration = sound.duration;
+        var currentTime = sound.currentTime;
+        var timelineWidth = timelineCanvas.width;
+        var timelineHeight = timelineCanvas.height;
+
+        timelineCtx.clearRect(0, 0, timelineWidth, timelineHeight);
+
+        timelineCtx.fillStyle = 'black';
+        timelineCtx.fillRect(0, 0, timelineWidth, timelineHeight);
+
+        timelineCtx.fillStyle = 'white';
+        timelineCtx.fillRect(0, 0, timelineWidth * (currentTime / duration), timelineHeight);
+      }
+
+      function updateCursor() {
+        var duration = sound.duration;
+        var currentTime = sound.currentTime;
+        var timelineWidth = timelineCanvas.width;
+
+        var cursorPosition = (currentTime / duration) * timelineWidth;
+        cursor.style.transform = 'translateX(' + cursorPosition + 'px)';
+      }
+
+      sound.addEventListener('timeupdate', function () {
+        drawTimeline();
+        updateCursor();
+      });
+
+    }
+  </script>
+</body>
+
+</html>
